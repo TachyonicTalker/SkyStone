@@ -37,7 +37,7 @@ import org.openftc.easyopencv.OpenCvInternalCamera;
 import org.openftc.easyopencv.OpenCvPipeline;
 
 @TeleOp
-public class StoneIdentifier extends LinearOpMode
+public class StoneIdentifierTuner extends LinearOpMode
 {
     OpenCvCamera phoneCam;
 
@@ -48,26 +48,8 @@ public class StoneIdentifier extends LinearOpMode
     double VLowerThreshold = 179;
     double VUpperThreshold = 255;
 
-    //0 means skystone, 1 means yellow stone
-    //-1 for debug, but we can keep it like this because if it works, it should change to either 0 or 255
-    private static int valMid = -1;
-    private static int valLeft = -1;
-    private static int valRight = -1;
-
-    private static float rectHeight = .6f/8f;
-    private static float rectWidth = 1.5f/8f;
-
-    private static float offsetX = 0f/8f;//changing this moves the three rects and the three circles left or right, range : (-2, 2) not inclusive
-    private static float offsetY = 0f/8f;//changing this moves the three rects and circles up or down, range: (-4, 4) not inclusive
-
-    private static float[] midPos =   {4f/8f + offsetX, 4f/8f + offsetY};//0 = col, 1 = row
-    private static float[] leftPos =  {2f/8f + offsetX, 4f/8f + offsetY};
-    private static float[] rightPos = {6f/8f + offsetX, 4f/8f + offsetY};
-    //moves all rectangles right or left by amount. units are in ratio to monitor
-
-    private final int rows = 320;
-    private final int cols = 240;
-
+    int tunerMode = 0;
+    int thresholdMode = 0;
 
     @Override
     public void runOpMode()
@@ -121,9 +103,11 @@ public class StoneIdentifier extends LinearOpMode
             /*
              * Send some stats to the telemetry
              */
-            telemetry.addData("Values", valLeft+"   "+valMid+"   "+valRight);
-            telemetry.addData("Height", rows);
-            telemetry.addData("Width", cols);
+            telemetry.addData("Tuner Mode" ,tunerMode);
+            telemetry.addData("Threshold Mode", thresholdMode);
+            telemetry.addData("Hue Threshold", "%.2f %.2f", HLowerThreshold, HUpperThreshold);
+            telemetry.addData("Saturation Threshold", "%.2f %.2f", SLowerThreshold, SUpperThreshold);
+            telemetry.addData("Value Threshold", "%.2f %.2f", VLowerThreshold, VUpperThreshold);
             telemetry.addData("Frame Count", phoneCam.getFrameCount());
             telemetry.addData("FPS", String.format("%.2f", phoneCam.getFps()));
             telemetry.addData("Total frame time ms", phoneCam.getTotalFrameTimeMs());
@@ -183,6 +167,83 @@ public class StoneIdentifier extends LinearOpMode
                 phoneCam.resumeViewport();
             }
 
+            if(gamepad1.dpad_left && tunerMode > 0) {
+                tunerMode--;
+            }
+            else if(gamepad1.dpad_right && tunerMode < 2) {
+                tunerMode++;
+            }
+
+            if(gamepad1.left_bumper) {
+                thresholdMode = 0;
+            }
+            else if (gamepad1.right_bumper) {
+                thresholdMode = 1;
+            }
+
+            if(gamepad1.dpad_up) {
+                switch (tunerMode) {
+                    case 0:
+                        switch (thresholdMode) {
+                            case 0: HLowerThreshold++;
+                                break;
+                            case 1: HUpperThreshold++;
+                                break;
+                        }
+                        break;
+
+                    case 1:
+                        switch (thresholdMode) {
+                            case 0: SLowerThreshold++;
+                                break;
+                            case 1: SUpperThreshold++;
+                                break;
+                        }
+                        break;
+
+                    case 2:
+                        switch (thresholdMode) {
+                            case 0: VLowerThreshold++;
+                                break;
+                            case 1: VUpperThreshold++;
+                                break;
+                        }
+                        break;
+                }
+            }
+            else if(gamepad1.dpad_down) {
+                switch (tunerMode) {
+                    case 0:
+                        switch (thresholdMode) {
+                            case 0: HLowerThreshold--;
+                                break;
+                            case 1: HUpperThreshold--;
+                                break;
+                        }
+                        break;
+
+                    case 1:
+                        switch (thresholdMode) {
+                            case 0: SLowerThreshold--;
+                                break;
+                            case 1: SUpperThreshold--;
+                                break;
+                        }
+                        break;
+
+                    case 2:
+                        switch (thresholdMode) {
+                            case 0: VLowerThreshold--;
+                                break;
+                            case 1: VUpperThreshold--;
+                                break;
+                        }
+                        break;
+                }
+                
+            }
+
+
             /*
              * For the purposes of this sample, throttle ourselves to 10Hz loop to avoid burning
              * excess CPU cycles for no reason. (By default, telemetry is only sent to the DS at 4Hz
@@ -219,7 +280,6 @@ public class StoneIdentifier extends LinearOpMode
          */
 
         //Outputs
-        private Mat blurOutput = new Mat();
         private Mat hsvThresholdOutput = new Mat();
         private Point newPoint0Output = new Point();
         private Point newPoint1Output = new Point();
@@ -237,11 +297,6 @@ public class StoneIdentifier extends LinearOpMode
              * it to another Mat.
              */
 
-            // Step Blur0:
-            //Mat blurInput = input;
-            //BlurType blurType = BlurType.get("Box Blur");
-            //double blurRadius = 2.7027027027027026;
-            //blur(blurInput, blurType, blurRadius, blurOutput);
 
             // Step HSV_Threshold0:
             Mat hsvThresholdInput = input;
@@ -250,54 +305,6 @@ public class StoneIdentifier extends LinearOpMode
             double[] hsvThresholdValue = {VLowerThreshold, VUpperThreshold};
             hsvThreshold(hsvThresholdInput, hsvThresholdHue, hsvThresholdSaturation, hsvThresholdValue, hsvThresholdOutput);
 
-            //get values from frame
-            double[] pixMid = hsvThresholdOutput.get((int)(input.rows()* midPos[1]), (int)(input.cols()* midPos[0]));//gets value at circle
-            valMid = (int)pixMid[0];
-
-            double[] pixLeft = hsvThresholdOutput.get((int)(input.rows()* leftPos[1]), (int)(input.cols()* leftPos[0]));//gets value at circle
-            valLeft = (int)pixLeft[0];
-
-            double[] pixRight = hsvThresholdOutput.get((int)(input.rows()* rightPos[1]), (int)(input.cols()* rightPos[0]));//gets value at circle
-            valRight = (int)pixRight[0];
-
-            //create three points
-            Point pointMid = new Point((int)(input.cols()* midPos[0]), (int)(input.rows()* midPos[1]));
-            Point pointLeft = new Point((int)(input.cols()* leftPos[0]), (int)(input.rows()* leftPos[1]));
-            Point pointRight = new Point((int)(input.cols()* rightPos[0]), (int)(input.rows()* rightPos[1]));
-
-            //draw circles on those points
-            Imgproc.circle(input, pointMid,5, new Scalar( 255, 0, 0 ),1 );//draws circle
-            Imgproc.circle(input, pointLeft,5, new Scalar( 255, 0, 0 ),1 );//draws circle
-            Imgproc.circle(input, pointRight,5, new Scalar( 255, 0, 0 ),1 );//draws circle
-
-            //draw 3 rectangles
-            Imgproc.rectangle(//1-3
-                    input,
-                    new Point(
-                            input.cols()*(leftPos[0]-rectWidth/2),
-                            input.rows()*(leftPos[1]-rectHeight/2)),
-                    new Point(
-                            input.cols()*(leftPos[0]+rectWidth/2),
-                            input.rows()*(leftPos[1]+rectHeight/2)),
-                    new Scalar(0, 255, 0), 3);
-            Imgproc.rectangle(//3-5
-                    input,
-                    new Point(
-                            input.cols()*(midPos[0]-rectWidth/2),
-                            input.rows()*(midPos[1]-rectHeight/2)),
-                    new Point(
-                            input.cols()*(midPos[0]+rectWidth/2),
-                            input.rows()*(midPos[1]+rectHeight/2)),
-                    new Scalar(0, 255, 0), 3);
-            Imgproc.rectangle(//5-7
-                    input,
-                    new Point(
-                            input.cols()*(rightPos[0]-rectWidth/2),
-                            input.rows()*(rightPos[1]-rectHeight/2)),
-                    new Point(
-                            input.cols()*(rightPos[0]+rectWidth/2),
-                            input.rows()*(rightPos[1]+rectHeight/2)),
-                    new Scalar(0, 255, 0), 3);
             /*
             // Step New_Point0:
             double newPoint0X = 100.0;
@@ -326,40 +333,10 @@ public class StoneIdentifier extends LinearOpMode
              * tapped, please see {@link PipelineStageSwitchingExample}
              */
 
-            return input;
+            return hsvThresholdOutput;//input;
         }
 
 
-
-        /**
-         * Softens an image using one of several filters.
-         * @param input The image on which to perform the blur.
-         * @param type The blurType to perform.
-         * @param doubleRadius The radius for the blur.
-         * @param output The image in which to store the output.
-         */
-        private void blur(Mat input, BlurType type, double doubleRadius,
-                          Mat output) {
-            int radius = (int)(doubleRadius + 0.5);
-            int kernelSize;
-            switch(type){
-                case BOX:
-                    kernelSize = 2 * radius + 1;
-                    Imgproc.blur(input, output, new Size(kernelSize, kernelSize));
-                    break;
-                case GAUSSIAN:
-                    kernelSize = 6 * radius + 1;
-                    Imgproc.GaussianBlur(input,output, new Size(kernelSize, kernelSize), radius);
-                    break;
-                case MEDIAN:
-                    kernelSize = 2 * radius + 1;
-                    Imgproc.medianBlur(input, output, kernelSize);
-                    break;
-                case BILATERAL:
-                    Imgproc.bilateralFilter(input, output, -1, radius, radius);
-                    break;
-            }
-        }
 
         /**
          * Segment an image based on hue, saturation, and value ranges.
